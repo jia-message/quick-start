@@ -1,0 +1,86 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: jia-db
+    environment:
+      POSTGRES_DB: jia
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: {{ db_password | default('postgres') }}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres -d jia" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:RELEASE.2024-01-28T22-35-53Z
+    container_name: jia-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: https://github.com/jia-message/server.git
+      dockerfile: Dockerfile
+    container_name: jia-server
+    ports:
+      - "{{ backend_port | default('3000') }}:3000"
+    environment:
+      PORT: 3000
+      ENV: development
+      JIA_MASTER_KEY: "{{ jia_master_key | default('super-secret-master-key-change-me') }}"
+      JWT_SECRET: "{{ jwt_secret | default('jwt-token-signing-secret-key-12345') }}"
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: {{ db_password | default('postgres') }}
+      DB_NAME: jia
+      DB_SSLMODE: disable
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: always
+
+  web-admin:
+    build:
+      context: https://github.com/jia-message/web-admin.git
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: "{{ vite_api_url | default('http://localhost:3000') }}"
+    container_name: jia-web-admin
+    ports:
+      - "{{ web_admin_port | default('8080') }}:80"
+    restart: always
+
+  web-client:
+    build:
+      context: https://github.com/jia-message/web-client.git
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: "{{ vite_api_url | default('http://localhost:3000') }}"
+    container_name: jia-web-client
+    ports:
+      - "{{ web_client_port | default('8081') }}:80"
+    restart: always
+
+volumes:
+  postgres_data:
+  minio_data:

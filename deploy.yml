@@ -1,0 +1,99 @@
+---
+- name: Deploy Jia All Repos
+  hosts: localhost
+  connection: local
+  gather_facts: no
+
+  vars_prompt:
+    - name: backend_port
+      prompt: "What port should the backend API run on?"
+      default: "3000"
+      private: no
+    
+    - name: web_admin_port
+      prompt: "What port should the admin panel run on?"
+      default: "8080"
+      private: no
+      
+    - name: web_client_port
+      prompt: "What port should the web client run on?"
+      default: "8081"
+      private: no
+      
+    - name: vite_api_url
+      prompt: "What is the VITE_API_URL for the web clients?"
+      default: "http://localhost:3000"
+      private: no
+
+    - name: setup_nginx
+      prompt: "Do you want to setup Nginx on the host? (yes/no - requires sudo/become)"
+      default: "no"
+      private: no
+      
+    - name: domain_name
+      prompt: "If setting up Nginx, what is your domain name?"
+      default: "localhost"
+      private: no
+
+    - name: db_password
+      prompt: "What should the database password be?"
+      default: "postgres"
+      private: yes
+
+    - name: jwt_secret
+      prompt: "Enter a JWT signing secret:"
+      default: "my-super-secret-jwt-key"
+      private: yes
+
+    - name: jia_master_key
+      prompt: "Enter the JIA Master Key:"
+      default: "my-super-secret-master-key"
+      private: yes
+
+  tasks:
+    - name: Template docker-compose.yml
+      template:
+        src: docker-compose.yml.j2
+        dest: docker-compose.yml
+
+    - name: Start Docker Compose stack
+      command: docker compose up -d --build
+      args:
+        chdir: "{{ playbook_dir }}"
+      register: docker_output
+
+    - name: Show Docker Compose output
+      debug:
+        var: docker_output.stdout_lines
+
+    - name: Nginx Setup Block
+      when: setup_nginx | bool
+      become: yes
+      block:
+        - name: Install Nginx
+          apt:
+            name: nginx
+            state: present
+            update_cache: yes
+          ignore_errors: yes
+
+        - name: Template Nginx config
+          template:
+            src: nginx.conf.j2
+            dest: /etc/nginx/sites-available/jia.conf
+
+        - name: Enable Nginx site
+          file:
+            src: /etc/nginx/sites-available/jia.conf
+            dest: /etc/nginx/sites-enabled/jia.conf
+            state: link
+
+        - name: Remove default Nginx site
+          file:
+            path: /etc/nginx/sites-enabled/default
+            state: absent
+
+        - name: Restart Nginx
+          service:
+            name: nginx
+            state: restarted
