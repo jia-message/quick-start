@@ -1,5 +1,6 @@
 # quick-start
 [🇷🇺 Русский (Russian)](RU-README.md)
+
 A quick start instruction repository for setting up the Jia server and web clients using Docker Compose and Ansible.
 
 ## Deployment with Ansible
